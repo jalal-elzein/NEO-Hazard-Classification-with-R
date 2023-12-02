@@ -1,0 +1,159 @@
+---
+title: ""
+output: html_document
+---
+
+# Problem
+
+# Data Selection
+This data is slightly pre-cleaned and obtained through NASA APIs obtained through the Center for Near Earth Object Studies which is responsible for computing highly accurate orbital data for thousands of asteroids and comets that fly close to our planetary neighborhood. This cleaned version is available on Kaggle under public domain provided by Mr. Sameep Vani, and it was last updated in June 2022.
+
+# Data Exploration
+
+## Reading the Dataset
+```{r}
+data <- read.csv("neo_v2.csv")
+```
+
+## Size of the Dataset
+```{r}
+nrow(data)
+```
+We can see we have 90,836 rows.
+
+```{r}
+length(unique(data$id))
+```
+That said, it's apparent that we only have 27,423 unique objects tracked in this dataset. Meaning certain objects appear more than once as they have orbited the Earth along the years.
+
+## Examining Our Features
+Let's now take a look to see what features are present for us in the dataset.
+```{r}
+columns <- colnames(data)
+columns
+```
+
+So, we have 10 columns in our data. We have compiled a description of these columns in the table below:
+
+| Column Name        | Data Type | Description                                                                        | Unit                |
+|--------------------|-----------|------------------------------------------------------------------------------------|---------------------|
+| id                 | int       | Unique identifier for each asteroid                                                | N/A                 |
+| name               | str       | Name assigned to the object by NASA                                                | N/A                 |
+| est_diameter_min   | float     | Minimum estimate of the diameter of the object                                     | kilometers          |
+| est_diameter_max   | float     | Maximum estimate of the diameter of the object                                     | kilometers          |
+| relative_velocity  | float     | Velocity of the object relative to Earth                                           | kilometers per hour |
+| miss_distance      | float     | Distance missed                                                                    | kilometers          |
+| orbiting_body      | str       | Planet that the object orbits                                                      | N/A                 |
+| sentry_object      | bool      | Whether the object is included in the sentry-automated collision monitoring system | N/A                 |
+| absolute_magnitude | float     | Describes the magnitude of the asteroid based on its intrinsic luminosity          | N/A                 |
+| hazardous          | bool      | Whether or not the object is harmful                                               | N/A                 |
+
+## Examining the Distribution of Values
+We will now try to visualize the distribution of values in each column of our dataset to get a better understanding of the nature of the data.
+
+```{r}
+library(ggplot2)
+```
+
+### `est_diameter_min`
+```{r}
+# Create a density plot
+ggplot(data, aes(x = est_diameter_min)) +
+  geom_density() +
+  labs(x = "Estimated Diameter (Min)", y = "Density", title = "Density Plot of Minimum Estimated Diameter")
+```
+
+### `est_diameter_max`
+```{r}
+ggplot(data, aes(x = est_diameter_max)) +
+  geom_density() +
+  labs(x = "Maximum Estimated Diameter", y = "Density", title = "Density Plot of Maximum Estimated Diameter")
+```
+
+### `relative_velocity`
+```{r}
+ggplot(data, aes(x = relative_velocity)) +
+  geom_density() +
+  labs(x = "Relative Velocity", y = "Density", title = "Density Plot of Relative Velocity")
+```
+
+### `miss_distance`
+```{r}
+ggplot(data, aes(x = miss_distance)) +
+  geom_density() +
+  labs(x = "Miss Distance", y = "Density", title = "Density Plot of Miss Distance")
+```
+
+### `orbiting_body`
+```{r}
+orbit_cat_count <- table(data$orbiting_body)
+pie_chart <- pie(orbit_cat_count, labels = paste(names(orbit_cat_count), "\n", orbit_cat_count), main = "Distribution of Orbiting Bodies")
+
+```
+
+### `sentry_object`
+```{r}
+sentry_cat_count <- table(data$sentry_object)
+pie_chart <- pie(sentry_cat_count, labels = paste(names(sentry_cat_count), "\n", sentry_cat_count), main = "Distribution of Sentry Objects")
+```
+
+### `absolute_magnitude`
+```{r}
+ggplot(data, aes(x = absolute_magnitude)) +
+  geom_density() +
+  labs(x = "Absolute Magnitude", y = "Density", title = "Density Plot of Absolute Magnitude")
+```
+
+### `hazardous`
+```{r}
+hazard_cat_counts <- table(data$hazardous)
+pie_chart <- pie(hazard_cat_counts, labels = paste(names(hazard_cat_counts), "\n", hazard_cat_counts), main = "Distribution of Hazardous Objects")
+```
+
+## Under-sampling
+Don't really know how to do this, one idea I have is to sort by true first then we take the first 20000 rows of the dataset, that way we include all the trues, but we shuffle the falses before we cut off the 20k
+
+# Feature Engineering
+
+## Encoding
+```{r}
+data$hazardous <- ifelse(data$hazardous == "True", 1, 0)
+```
+
+## Excluding Features
+
+TO BE REPLACED BY PCA
+
+As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
+
+Other columns we want to exclude will be the `name` and `id` as they are not even features, rather identifiers for the objects.
+
+```{r}
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_max", "est_diameter_min")
+features <- data[feature_names]
+target <- data$hazardous
+```
+
+# Data Preprocessing
+
+## Train / Test Splits
+
+# Model Development
+
+## Decision Trees
+
+### Fitting the Model
+
+### Model Evaluation
+
+### Pruning
+
+## Support Vector Machines
+
+## Principal Component Analysis
+
+## Clustering
+
+# Hyperparameter Tuning
+
+# Interpreting the Results
