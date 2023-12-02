@@ -29,3 +29,4 @@ raw_features <- data[c()]
 # check number of unique values for orbiting body and sentry object
 # show class imbalance between non/hazardous
 # create a new dataset with less class imbalance
+
