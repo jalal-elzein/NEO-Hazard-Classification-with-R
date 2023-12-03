@@ -115,17 +115,16 @@ pie_chart <- pie(hazard_cat_counts, labels = paste(names(hazard_cat_counts), "\n
 ```
 
 ## Under-sampling
-Removing Duplicate IDs 
 ```{r}
 # Remove duplicates based on ID
-data1 <- data 
+data_unique <- data %>% distinct(id, .keep_all = TRUE)
 
 # Splitting the data into hazardous and non-hazardous datasets
-hazardous_data <- filter(data1, hazardous == TRUE)
-non_hazardous_data <- filter(data1, hazardous == FALSE)
+hazardous_data <- filter(data_unique, hazardous == "True")
+non_hazardous_data <- filter(data_unique, hazardous == "False")
 
 # Calculate the total number of samples needed
-total_samples <- nrow(data1)
+total_samples <- nrow(data_unique)
 
 # Since hazardous data is only 20% of the dataset, we use all of it
 hazardous_samples <- nrow(hazardous_data)

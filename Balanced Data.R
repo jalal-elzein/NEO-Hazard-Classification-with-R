@@ -7,8 +7,8 @@ data <- read.csv('neo_v2.csv')
 data_unique <- data %>% distinct(id, .keep_all = TRUE)
 
 # Splitting the data into hazardous and non-hazardous datasets
-hazardous_data <- filter(data_unique, hazardous == TRUE)
-non_hazardous_data <- filter(data_unique, hazardous == FALSE)
+hazardous_data <- filter(data_unique, hazardous == "True")
+non_hazardous_data <- filter(data_unique, hazardous == "False")
 
 # Calculate the total number of samples needed
 total_samples <- nrow(data_unique)
