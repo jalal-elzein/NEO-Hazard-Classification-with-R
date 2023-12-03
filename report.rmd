@@ -1,6 +1,8 @@
 ---
-title: ""
-output: html_document
+title: ''
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 # Problem
@@ -24,6 +26,8 @@ library(caret)
 library(pROC)
 library(ggplot2)
 library(reshape2)
+library(FactoMineR)
+
 ```
 
 ## Size of the Dataset
@@ -164,15 +168,28 @@ write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
 
 
 ## Excluding Features
+### PCA
+```{r}
 
-TO BE REPLACED BY PCA
+# Selecting only the numerical columns for PCA, excluding 'id', 'sentry_object', and 'hazardous'
+selected_columns <- final_dataset[, c('est_diameter_min', 'est_diameter_max', 'relative_velocity', 'miss_distance', 'absolute_magnitude')]
+
+# Performing PCA
+pca_results <- PCA(selected_columns, scale.unit = TRUE, graph = FALSE)
+
+# Returning the summary of PCA results
+summary(pca_results)
+
+
+```
+
 
 As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
 
 Other columns we want to exclude will be the `name` and `id` as they are not even features, rather identifiers for the objects.
 
 ```{r}
-feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_max", "est_diameter_min")
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min")
 features <- final_dataset[feature_names]
 target <- final_dataset$hazardous
 ```
@@ -193,7 +210,7 @@ target <- final_dataset$hazardous
 
 ## Support Vector Machines
 
-###Prepare and split data
+### Prepare and split data
 ```{r}
 final_dataset$hazardous <- factor(final_dataset$hazardous, levels = c("False", "True"))
 
@@ -212,15 +229,24 @@ results <- data.frame()
 kernels <- c("linear", "polynomial", "radial", "sigmoid")
 roc_data <- data.frame()
 
+# Convert feature names to a formula string
+formula_string <- paste("hazardous ~", paste(feature_names, collapse = " + "))
+
+# Convert the string to a formula
+svm_formula <- as.formula(formula_string)
+
+# Example output of svm_formula will be:
+# hazardous ~ absolute_magnitude + miss_distance + relative_velocity + est_diameter_min
+
 # SVM analysis and ROC data collection
 for (kernel in kernels) {
-  # Train the model with probability estimation
-  model <- svm(hazardous ~ est_diameter_min + est_diameter_max + absolute_magnitude + relative_velocity + miss_distance, 
+  # Train the model with probability estimation using the formula
+  model <- svm(svm_formula, 
                data = train_data, 
                type = 'C-classification', 
                kernel = kernel, 
                probability = TRUE)
-  
+
   # Predictions
   predictions <- predict(model, test_data, probability = TRUE)
   

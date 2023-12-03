@@ -25,7 +25,7 @@ roc_data <- data.frame()
 # SVM analysis and ROC data collection
 for (kernel in kernels) {
   # Train the model with probability estimation
-  model <- svm(hazardous ~ est_diameter_min + est_diameter_max + absolute_magnitude + relative_velocity + miss_distance, 
+  model <- svm(hazardous ~ est_diameter_min + absolute_magnitude + relative_velocity + miss_distance, 
                data = train_data, 
                type = 'C-classification', 
                kernel = kernel, 
