@@ -157,7 +157,7 @@ write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
 
 ## Encoding
 ```{r}
-data$hazardous <- ifelse(data$hazardous == "True", 1, 0)
+final_dataset$hazardous <- ifelse(final_dataset$hazardous == "True", 1, 0)
 ```
 
 ## Excluding Features
@@ -170,8 +170,8 @@ Other columns we want to exclude will be the `name` and `id` as they are not eve
 
 ```{r}
 feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_max", "est_diameter_min")
-features <- data[feature_names]
-target <- data$hazardous
+features <- final_dataset[feature_names]
+target <- final_dataset$hazardous
 ```
 
 # Data Preprocessing
