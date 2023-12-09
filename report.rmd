@@ -5,7 +5,8 @@ output:
   pdf_document: default
 ---
 
-# Problem
+# Introduction
+In the quest for understanding and safeguarding our planet from potential cosmic threats, the analysis of Near-Earth Objects (NEOs) takes center stage. Leveraging data from NASA's API on NEOs, this report delves into the development of machine learning models aimed at classifying these celestial entities as hazardous or non-hazardous. The urgency of this research lies in the profound implications of a collision with a hazardous NEO, as evidenced by historical cosmic events. By harnessing the power of machine learning, we aspire to enhance our predictive capabilities and contribute to the broader field of planetary defense
 
 # Data Selection
 This data is slightly pre-cleaned and obtained through NASA APIs obtained through the Center for Near Earth Object Studies which is responsible for computing highly accurate orbital data for thousands of asteroids and comets that fly close to our planetary neighborhood. This cleaned version is available on Kaggle under public domain provided by Mr. Sameep Vani, and it was last updated in June 2022.
@@ -27,7 +28,7 @@ library(pROC)
 library(ggplot2)
 library(reshape2)
 library(FactoMineR)
-
+library(randomForest)
 ```
 
 ## Size of the Dataset
@@ -142,8 +143,8 @@ hazardous_samples <- nrow(hazardous_data)
 
 # Calculate the number of non-hazardous samples needed to achieve the 55% ratio
 # For this, first calculate the total desired size of the final dataset
-final_dataset_size <- hazardous_samples / 0.45
-non_hazardous_samples <- round(final_dataset_size * 0.55)
+final_dataset_size <- hazardous_samples / 0.50
+non_hazardous_samples <- round(final_dataset_size * 0.50)
 
 # Adjust in case the calculation exceeds the available non-hazardous data
 non_hazardous_samples <- min(non_hazardous_samples, nrow(non_hazardous_data))
@@ -160,22 +161,18 @@ final_dataset <- final_dataset[sample(nrow(final_dataset)),]
 
 # Save the final dataset
 write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
-
 ```
 
 
 # Feature Engineering
 
 ## Excluding Features
-
-
-
 As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
 
 Other columns we want to exclude will be the `name` and `id` as they are not even features, rather identifiers for the objects.
 
 ```{r}
-feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min")
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
 features <- final_dataset[feature_names]
 target <- final_dataset$hazardous
 ```
@@ -282,6 +279,23 @@ print(complex_confusion_matrix$F1)
 ```
 
 ## Ensemble Methods on Trees
+
+```{r}
+data <- read.csv("balanced_dataset.csv")
+
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
+features <- data[feature_names]
+target <- factor(data$hazardous)
+
+features_scaled <- scale(features)
+
+set.seed(123)
+splitIndex <- createDataPartition(data$hazardous, p = .8, list = FALSE)
+X_train <- features_scaled[splitIndex,]
+X_test <- features_scaled[-splitIndex,]
+y_train <- target[splitIndex]
+y_test <- target[-splitIndex]
+```
 
 ### Random Forests
 We tried a random forests approach, which is a collection of decision trees. We were able to use the same data from the decision trees, so first we define the model:

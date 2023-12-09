@@ -1,5 +1,7 @@
 # install.packages("rpart")
 # install.packages("rpart.plot")
+library(ggplot2)
+library(lattice)
 library(caret)
 library(rpart)
 library(rpart.plot)
