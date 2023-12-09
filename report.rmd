@@ -567,6 +567,81 @@ The results with 4 PCA components are particularly interesting because they are 
 with fewer components (like 2 or 3) leads to some loss in model performance compared to the original feature set or 4 PCA components. This implies that each of the original features contributes valuable information to the model.
 
 ## Clustering
+For clustering, we will be using the same datasets, but excluding the target variable and attempting to see how different clustering algorithms will partition our observations.
+
+In this section, we explore hierarchical clustering with different linkage schemes as well as k-means clustering.
+
+### Hierarchical Clustering
+Hierarchical clustering is a powerful technique that partitions data points into a hierarchical tree-like structure based on their similarities or dissimilarities.
+It groups similar objects into clusters and progressively merges them, forming a dendrogram that visually represents the relationships between data points.
+
+Let's see first how we hide our target variable from our dataset in preparation for the clustering:
+
+```{r}
+data <- read.csv("balanced_dataset.csv")
+
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
+hclust_features <- data[feature_names]
+```
+
+After that, we will scale our features:
+
+```{r}
+hclust_features_scaled <- scale(hclust_features)
+```
+
+Now, we can attempt to fit:
+
+```{r}
+complete_heir_model <- hclust(dist(hclust_features_scaled), method = "complete")
+single_heir_model <- hclust(dist(hclust_features_scaled), method = "single")
+average_heir_model <- hclust(dist(hclust_features_scaled), method = "average")
+centroid_heir_model <- hclust(dist(hclust_features_scaled), method = "centroid")
+median_heir_model <- hclust(dist(hclust_features_scaled), method = "median")
+mcquitty_heir_model <- hclust(dist(hclust_features_scaled), method = "mcquitty")
+ward.D_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D")
+ward.D2_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D2")
+```
+
+```{r}
+plot(complete_heir_model, main = "Complete Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(single_heir_model, main = "Single Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(average_heir_model, main = "Average Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(centroid_heir_model, main = "Centroid Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(median_heir_model, main = "Median Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(mcquitty_heir_model, main = "McQuitty Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(ward.D_heir_model, main = "Ward D Linkage",
+     xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+plot(ward.D2_heir_model, main = "Ward D2 Linkage",
+     xlab = "", sub = "", cex = .9)
+```
 
 # Hyperparameter Tuning
 
