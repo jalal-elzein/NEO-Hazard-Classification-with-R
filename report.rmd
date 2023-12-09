@@ -297,6 +297,62 @@ print(complex_confusion_matrix$F1)
 
 ## Ensemble Methods on Trees
 
+### Random Forests
+We tried a random forests approach, which is a collection of decision trees. We were able to use the same data from the decision trees, so first we define the model:
+
+```{r}
+rf_model <- randomForest(x = X_train, y = y_train, ntree = 500, importance = TRUE, type = "classification")
+```
+
+We set the `ntree` variable to the default value which is 500, this hyperparameter refers to the number of trees that will be created inside the forest.
+
+Evaluating the model went as follows:
+```{r}
+rf_predictions <- predict(rf_model, newdata = X_test, type = "class")
+
+rf_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions)
+plot_confusion_matrix(rf_confusion_matrix$`Confusion Matrix`[[1]])
+```
+```{r}
+rf_accuracy <- mean(rf_predictions == y_test)
+print(rf_accuracy)
+print(rf_confusion_matrix$`Balanced Accuracy`)
+print(rf_confusion_matrix$F1)
+```
+
+The model did not perform better than our initial decision tree model, so we try hyperparameter tuning using 5-fold cross validation on the model:
+
+```{r}
+rf_train_control <- trainControl(method = "cv", number = 5)
+rf_hyperparameters <- expand.grid(mtry = c(2, 3, 4), ntree = c(100, 500, 1000, 2000))
+
+rf_model_cv <- randomForest(
+  x = X_train,
+  y = y_train,
+  ntree = 500,
+  importance = TRUE,
+  type = "classification",
+  trControl = train_control,
+  tuneGrid = hyperparameters
+)
+```
+
+Again, the metrics are as follows:
+
+```{r}
+rf_predictions_cv <- predict(rf_model_cv, newdata = X_test, type = "class")
+
+rf_confusion_matrix_cv <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions_cv)
+plot_confusion_matrix(rf_confusion_matrix_cv$`Confusion Matrix`[[1]])
+```
+
+```{r}
+rf_accuracy_cv <- mean(rf_predictions_cv == y_test)
+print(rf_accuracy_cv)
+print(rf_confusion_matrix_cv$`Balanced Accuracy`)
+print(rf_confusion_matrix_cv$F1)
+```
+
 ## Support Vector Machines
 
 ### Prepare and split data
