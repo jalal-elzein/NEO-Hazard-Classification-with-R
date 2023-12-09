@@ -1,8 +1,8 @@
 ---
 title: ''
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 # Problem
@@ -168,20 +168,6 @@ write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
 
 ## Excluding Features
 
-### PCA
-```{r}
-
-# Selecting only the numerical columns for PCA, excluding 'id', 'sentry_object', and 'hazardous'
-selected_columns <- final_dataset[, c('est_diameter_min', 'est_diameter_max', 'relative_velocity', 'miss_distance', 'absolute_magnitude')]
-
-# Performing PCA
-pca_results <- PCA(selected_columns, scale.unit = TRUE, graph = FALSE)
-
-# Returning the summary of PCA results
-summary(pca_results)
-
-
-```
 
 
 As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
@@ -356,6 +342,7 @@ print(rf_confusion_matrix_cv$F1)
 ## Support Vector Machines
 
 ### Prepare and split data
+Just splitting the datasetinto training and testing sets with an 80-20 split
 ```{r}
 final_dataset$hazardous <- factor(final_dataset$hazardous, levels = c("False", "True"))
 
@@ -367,6 +354,7 @@ test_data <- final_dataset[-splitIndex,]
 
 ```
 ### Fitting the Model
+The SVM model is fitted using different kernels: linear, polynomial, radial, and sigmoid.
 ```{r}
 
 # Initialize results dataframe
@@ -425,6 +413,7 @@ for (kernel in kernels) {
 
 ```
 ### Model Evaluation
+After training the models, the performance is evaluated using metrics like accuracy, precision, recall, F1 score, and AUC (Area Under the Curve). These metrics provide a comprehensive view of the model's performance. The ROC (Receiver Operating Characteristic) curves for each kernel are plotted to visualize their performance in distinguishing between the classes. Finally, a bar plot compares the performance metrics across different kernels, helping to identify which kernel performs best on this dataset.
 ```{r}
 
 # Output the results
@@ -447,9 +436,135 @@ ggplot(melted_results, aes(x = kernel, y = value, fill = variable)) +
        x = "Kernel", y = "Value")
 
 ```
+SVM Results:
 
+-Radial Kernel: Highest accuracy and AUC, indicating excellent overall performance and ability to distinguish between classes.
+
+-Linear Kernel: Close second in performance, showing good balance and effectiveness.
+Polynomial Kernel: Moderate performance, slightly behind the linear kernel.
+
+-Sigmoid Kernel: Lowest performance, indicating it might not be the best fit for this particular dataset.
 
 ## Principal Component Analysis
+
+In our analysis, we have applied PCA to a dataset containing various features associated with celestial objects, namely est_diameter_min, est_diameter_max, relative_velocity, miss_distance, and absolute_magnitude. These features have been standardized before applying PCA to ensure that each feature contributes equally to the analysis.
+### Running PCA
+```{r}
+# Step 2: Select numerical columns
+numerical_data <- data[, c("est_diameter_min", "est_diameter_max", "relative_velocity", "miss_distance", "absolute_magnitude")]
+
+# Step 3: Standardize the data
+standardized_data <- scale(numerical_data)
+
+# Step 4: Apply PCA
+pca_result <- prcomp(standardized_data)
+```
+### Getting Results
+```{r}
+#Step 5: Summary of results
+summary(pca_result)
+```
+The key insights:
+
+-Once we look at the results we can see the first two principal components (PC1 and PC2) capture a significant amount of information (78.80% of the total variance). This suggests that these two components largely summarize the variability in our dataset
+- Based on the cumulative proportion of variance, one can decide how many principal components to retain. For instance, using the first four components (capturing 100% of the variance) would be a comprehensive representation of the data.
+-The negligible variance explained by PC5 suggests that it contributes little to the data structure and can be dropped without much loss of information.
+
+### Running PCA Components on SVM 
+```{r}
+data$hazardous <- factor(data$hazardous, levels = c("False", "True"))
+# Function to perform SVM analysis with specified number of PCA components
+perform_svm_analysis <- function(num_components) {
+  # Extracting the specified number of principal components
+  pca_data <- pca_result$x[, 1:num_components]
+  
+  # Creating a dataframe with PCA components
+  pca_df <- as.data.frame(pca_data)
+  pca_df$hazardous <- data$hazardous
+  
+  # Splitting the dataset with PCA components
+  set.seed(123) # for reproducibility
+  splitIndex <- createDataPartition(pca_df$hazardous, p = .8, list = FALSE)
+  train_data_pca <- pca_df[splitIndex,]
+  test_data_pca <- pca_df[-splitIndex,]
+  
+  # Initialize results dataframe for PCA-based SVM
+  results_pca <- data.frame()
+  kernels <- c("linear", "polynomial", "radial", "sigmoid")
+  
+  # SVM analysis and ROC data collection using PCA components
+  for (kernel in kernels) {
+    # Train the model with probability estimation using PCA components
+    formula <- as.formula(paste("hazardous ~", paste(colnames(pca_data), collapse = " + ")))
+    model_pca <- svm(formula, 
+                     data = train_data_pca, 
+                     type = 'C-classification', 
+                     kernel = kernel, 
+                     probability = TRUE)
+    
+    # Predictions using PCA components
+    predictions_pca <- predict(model_pca, test_data_pca, probability = TRUE)
+    
+    # Evaluation Metrics for PCA-based model
+    cm_pca <- table(test_data_pca$hazardous, predictions_pca)
+    accuracy_pca <- sum(diag(cm_pca)) / sum(cm_pca)
+    precision_pca <- diag(cm_pca) / colSums(cm_pca)
+    recall_pca <- diag(cm_pca) / rowSums(cm_pca)
+    f1_scores_pca <- 2 * (precision_pca * recall_pca) / (precision_pca + recall_pca)
+    f1_score_pca <- mean(f1_scores_pca, na.rm = TRUE)  # Averaging the F1 scores
+    
+    # ROC and AUC for PCA-based model
+    probabilities_pca <- attr(predictions_pca, "probabilities")
+    auc_value_pca <- if("True" %in% colnames(probabilities_pca)) {
+      roc_obj_pca <- roc(test_data_pca$hazardous, probabilities_pca[, "True"])
+      auc(roc_obj_pca)
+    } else {
+      NA
+    }
+    
+    # Collect results for PCA-based model
+    results_pca <- rbind(results_pca, data.frame(kernel, accuracy_pca, f1_score_pca, auc_value_pca, components = num_components))
+  }
+  
+  return(results_pca)
+}
+
+# Perform SVM analysis for 2, 3, and 4 components
+results_2components <- perform_svm_analysis(2)
+results_3components <- perform_svm_analysis(3)
+results_4components <- perform_svm_analysis(4)
+
+# Combine results from different component runs
+all_results <- rbind(results_2components, results_3components, results_4components)
+```
+#### Results
+```{r}
+# Output the combined results
+print(all_results)
+```
+Impact of PCA on Model Performance
+
+-Linear Kernel:
+
+With PCA (4 components), the performance is almost identical to the scenario without PCA. This suggests that PCA, in this case, effectively captures the necessary information in fewer dimensions without losing predictive power.
+
+-Polynomial Kernel:
+
+The performance slightly improves with PCA (4 components) compared to without PCA. This improvement might be due to the reduction of noise or redundant information in the dataset through PCA.
+
+-Radial Kernel:
+
+Interestingly, the radial kernel's performance is slightly better without PCA but is still very close with PCA (3 components). This indicates that PCA does a good job of maintaining the essential features for the radial kernel.
+
+-Sigmoid Kernel:
+
+The performance is generally lower with PCA compared to without PCA, suggesting that PCA might be removing some information that is important for the sigmoid kernel's decision-making
+
+#### Interpretation of SVM with PCA
+The performance of the SVM models using PCA components seems to improve as you increase the number of components. 
+The results with 4 PCA components are particularly interesting because they are derived from the same number of original features but transformed into principal components. The performance is quite comparable to the original SVM model, indicating that PCA is capturing the essential information in the data.
+
+with fewer components (like 2 or 3) leads to some loss in model performance compared to the original feature set or 4 PCA components. This implies that each of the original features contributes valuable information to the model.
 
 ## Clustering
 For clustering, we will be using the same datasets, but excluding the target variable and attempting to see how different clustering algorithms will partition our observations.
