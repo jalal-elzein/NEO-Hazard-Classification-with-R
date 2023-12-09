@@ -201,12 +201,101 @@ target <- final_dataset$hazardous
 # Model Development
 
 ## Decision Trees
+The first of a few models we will be trying is Decision Trees.
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(cvms)
+
+data <- read.csv("balanced_dataset.csv")
+
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
+features <- data[feature_names]
+target <- data$hazardous
+
+features_scaled <- scale(features)
+
+set.seed(123)
+splitIndex <- createDataPartition(data$hazardous, p = .8, list = FALSE)
+X_train <- features_scaled[splitIndex,]
+X_test <- features_scaled[-splitIndex,]
+y_train <- target[splitIndex]
+y_test <- target[-splitIndex]
+
+```
 
 ### Fitting the Model
 
-### Model Evaluation
+```{r}
+model <- rpart(y_train ~ est_diameter_min + est_diameter_max + relative_velocity + miss_distance + absolute_magnitude,
+               data = as.data.frame(X_train),
+               method = "class",
+)
+```
 
-### Pruning
+Let's examine the model architecture
+```{r}
+rpart.plot(model)
+```
+
+### Model Evaluation
+```{r}
+predictions <- predict(model, newdata = as.data.frame(X_test), type = "class")
+
+confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = predictions)
+plot_confusion_matrix(confusion_matrix$`Confusion Matrix`[[1]])
+```
+
+We can see our sensitivity (recall) rate is extremely high (99.2%) which is perfect for our use-case since we care more about capturing hazardous objects than we do about correctly detecting harmless objects. On the other hand, our precision is not amazing (76.1%), meaning approximately a quarter of what our model predicted as hazardous was actually benign. The accuracy, balanced accuracy and F1 score metrics can be found below:
+
+```{r}
+accuracy <- mean(predictions == y_test)
+print(accuracy)
+print(confusion_matrix$`Balanced Accuracy`)
+print(confusion_matrix$F1)
+```
+
+Balanced Accuracy is a better assessment of our model in this case, because balanced accuracy takes into account sensitivity and specificity as well which is perfect for imbalanced datasets like ours.
+
+
+
+### Improvements
+We noticed that initially, the tree is too focused on one feature, so we experimented with a few things to increase the model depth, but none of the methods we tried yielded any improvements except for increasing model complexity, with a very slight improvement as can be seen below:
+
+```{r}
+complex_model <- rpart(y_train ~ est_diameter_min + est_diameter_max + relative_velocity + miss_distance + absolute_magnitude,
+               data = as.data.frame(X_train),
+               method = "class",
+               control = rpart.control(cp = 0.001),
+)
+```
+
+Let's also visualize the changes to the tree
+
+```{r}
+rpart.plot(complex_model)
+```
+
+And let's examine the improvement:
+```{r}
+complex_predictions <- predict(complex_model, newdata = as.data.frame(X_test), type = "class")
+
+complex_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = complex_predictions)
+plot_confusion_matrix(complex_confusion_matrix$`Confusion Matrix`[[1]])
+```
+
+We see our model here has dropped a little bit of sensitivity in exchange for slightly higher precision, which raises our accuracy and F1 scores.
+
+```{r}
+complex_accuracy <- mean(complex_predictions == y_test)
+print(complex_accuracy)
+print(complex_confusion_matrix$`Balanced Accuracy`)
+print(complex_confusion_matrix$F1)
+```
+
+## Ensemble Methods on Trees
 
 ## Support Vector Machines
 
