@@ -142,8 +142,8 @@ hazardous_samples <- nrow(hazardous_data)
 
 # Calculate the number of non-hazardous samples needed to achieve the 55% ratio
 # For this, first calculate the total desired size of the final dataset
-final_dataset_size <- hazardous_samples / 0.45
-non_hazardous_samples <- round(final_dataset_size * 0.55)
+final_dataset_size <- hazardous_samples / 0.5
+non_hazardous_samples <- round(final_dataset_size * 0.5)
 
 # Adjust in case the calculation exceeds the available non-hazardous data
 non_hazardous_samples <- min(non_hazardous_samples, nrow(non_hazardous_data))
