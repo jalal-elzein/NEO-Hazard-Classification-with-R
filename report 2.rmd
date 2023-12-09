@@ -1,0 +1,642 @@
+---
+title: ''
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Problem
+
+# Data Selection
+This data is slightly pre-cleaned and obtained through NASA APIs obtained through the Center for Near Earth Object Studies which is responsible for computing highly accurate orbital data for thousands of asteroids and comets that fly close to our planetary neighborhood. This cleaned version is available on Kaggle under public domain provided by Mr. Sameep Vani, and it was last updated in June 2022.
+
+# Data Exploration
+
+## Reading the Dataset
+```{r}
+data <- read.csv("neo_v2.csv")
+```
+## Load necessary libraries
+```{r}
+library(dplyr)
+library(lattice)
+library(e1071)
+library(caTools)
+library(caret)
+library(pROC)
+library(ggplot2)
+library(reshape2)
+library(FactoMineR)
+
+```
+
+## Size of the Dataset
+```{r}
+nrow(data)
+```
+We can see we have 90,836 rows.
+
+```{r}
+length(unique(data$id))
+```
+That said, it's apparent that we only have 27,423 unique objects tracked in this dataset. Meaning certain objects appear more than once as they have orbited the Earth along the years.
+
+## Examining Our Features
+Let's now take a look to see what features are present for us in the dataset.
+```{r}
+columns <- colnames(data)
+columns
+```
+
+So, we have 10 columns in our data. We have compiled a description of these columns in the table below:
+
+| Column Name        | Data Type | Description                                                                        | Unit                |
+|--------------------|-----------|------------------------------------------------------------------------------------|---------------------|
+| id                 | int       | Unique identifier for each asteroid                                                | N/A                 |
+| name               | str       | Name assigned to the object by NASA                                                | N/A                 |
+| est_diameter_min   | float     | Minimum estimate of the diameter of the object                                     | kilometers          |
+| est_diameter_max   | float     | Maximum estimate of the diameter of the object                                     | kilometers          |
+| relative_velocity  | float     | Velocity of the object relative to Earth                                           | kilometers per hour |
+| miss_distance      | float     | Distance missed                                                                    | kilometers          |
+| orbiting_body      | str       | Planet that the object orbits                                                      | N/A                 |
+| sentry_object      | bool      | Whether the object is included in the sentry-automated collision monitoring system | N/A                 |
+| absolute_magnitude | float     | Describes the magnitude of the asteroid based on its intrinsic luminosity          | N/A                 |
+| hazardous          | bool      | Whether or not the object is harmful                                               | N/A                 |
+
+## Examining the Distribution of Values
+We will now try to visualize the distribution of values in each column of our dataset to get a better understanding of the nature of the data.
+
+```{r}
+library(ggplot2)
+```
+
+### `est_diameter_min`
+```{r}
+# Create a density plot
+ggplot(data, aes(x = est_diameter_min)) +
+  geom_density() +
+  labs(x = "Estimated Diameter (Min)", y = "Density", title = "Density Plot of Minimum Estimated Diameter")
+```
+
+### `est_diameter_max`
+```{r}
+ggplot(data, aes(x = est_diameter_max)) +
+  geom_density() +
+  labs(x = "Maximum Estimated Diameter", y = "Density", title = "Density Plot of Maximum Estimated Diameter")
+```
+
+### `relative_velocity`
+```{r}
+ggplot(data, aes(x = relative_velocity)) +
+  geom_density() +
+  labs(x = "Relative Velocity", y = "Density", title = "Density Plot of Relative Velocity")
+```
+
+### `miss_distance`
+```{r}
+ggplot(data, aes(x = miss_distance)) +
+  geom_density() +
+  labs(x = "Miss Distance", y = "Density", title = "Density Plot of Miss Distance")
+```
+
+### `orbiting_body`
+```{r}
+orbit_cat_count <- table(data$orbiting_body)
+pie_chart <- pie(orbit_cat_count, labels = paste(names(orbit_cat_count), "\n", orbit_cat_count), main = "Distribution of Orbiting Bodies")
+
+```
+
+### `sentry_object`
+```{r}
+sentry_cat_count <- table(data$sentry_object)
+pie_chart <- pie(sentry_cat_count, labels = paste(names(sentry_cat_count), "\n", sentry_cat_count), main = "Distribution of Sentry Objects")
+```
+
+### `absolute_magnitude`
+```{r}
+ggplot(data, aes(x = absolute_magnitude)) +
+  geom_density() +
+  labs(x = "Absolute Magnitude", y = "Density", title = "Density Plot of Absolute Magnitude")
+```
+
+### `hazardous`
+```{r}
+hazard_cat_counts <- table(data$hazardous)
+pie_chart <- pie(hazard_cat_counts, labels = paste(names(hazard_cat_counts), "\n", hazard_cat_counts), main = "Distribution of Hazardous Objects")
+```
+
+## Under-sampling
+```{r}
+# Remove duplicates based on ID
+data_unique <- data %>% distinct(id, .keep_all = TRUE)
+
+# Splitting the data into hazardous and non-hazardous datasets
+hazardous_data <- filter(data_unique, hazardous == "True")
+non_hazardous_data <- filter(data_unique, hazardous == "False")
+
+# Calculate the total number of samples needed
+total_samples <- nrow(data_unique)
+
+# Since hazardous data is only 20% of the dataset, we use all of it
+hazardous_samples <- nrow(hazardous_data)
+
+# Calculate the number of non-hazardous samples needed to achieve the 55% ratio
+# For this, first calculate the total desired size of the final dataset
+final_dataset_size <- hazardous_samples / 0.45
+non_hazardous_samples <- round(final_dataset_size * 0.55)
+
+# Adjust in case the calculation exceeds the available non-hazardous data
+non_hazardous_samples <- min(non_hazardous_samples, nrow(non_hazardous_data))
+
+# Sample the non-hazardous data
+sampled_non_hazardous <- sample_n(non_hazardous_data, non_hazardous_samples)
+
+# Combine the samples (all hazardous data and sampled non-hazardous data)
+final_dataset <- rbind(hazardous_data, sampled_non_hazardous)
+
+# Shuffle the final dataset
+set.seed(123)
+final_dataset <- final_dataset[sample(nrow(final_dataset)),]
+
+# Save the final dataset
+write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
+
+```
+
+
+# Feature Engineering
+
+## Excluding Features
+
+
+
+As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
+
+Other columns we want to exclude will be the `name` and `id` as they are not even features, rather identifiers for the objects.
+
+```{r}
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min")
+features <- final_dataset[feature_names]
+target <- final_dataset$hazardous
+```
+
+# Data Preprocessing
+
+## Train / Test Splits
+
+# Model Development
+
+## Decision Trees
+The first of a few models we will be trying is Decision Trees.
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(cvms)
+
+data <- read.csv("balanced_dataset.csv")
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
+features <- data[feature_names]
+target <- factor(data$hazardous)
+
+
+features_scaled <- scale(features)
+set.seed(123)
+splitIndex <- createDataPartition(data$hazardous, p = .8, list = FALSE)
+X_train <- features_scaled[splitIndex,]
+X_test <- features_scaled[-splitIndex,]
+y_train <- target[splitIndex]
+y_test <- target[-splitIndex]
+
+```
+
+### Fitting the Model
+
+```{r}
+model <- rpart(y_train ~ est_diameter_min + relative_velocity + miss_distance + absolute_magnitude,
+               data = as.data.frame(X_train),
+               method = "class",
+)
+```
+
+Let's examine the model architecture
+```{r}
+rpart.plot(model)
+```
+
+### Model Evaluation
+```{r}
+predictions <- predict(model, newdata = as.data.frame(X_test), type = "class")
+
+confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = predictions)
+plot_confusion_matrix(confusion_matrix$`Confusion Matrix`[[1]])
+original_specificity <- confusion_matrix$Specificity
+original_sensitivity <- confusion_matrix$Sensitivity
+original_f1 <- confusion_matrix$F1
+```
+
+We can see our sensitivity (recall) rate is extremely high (99.2%) which is perfect for our use-case since we care more about capturing hazardous objects than we do about correctly detecting harmless objects. On the other hand, our precision is not amazing (76.1%), meaning approximately a quarter of what our model predicted as hazardous was actually benign. The accuracy, balanced accuracy and F1 score metrics can be found below:
+
+```{r}
+accuracy <- mean(predictions == y_test)
+print(paste("Accuracy",accuracy))
+print(paste("Balanced Accuracy",confusion_matrix$`Balanced Accuracy`))
+print(paste("Specificity:", original_specificity))
+print(paste("Sensitivity (Recall):", original_sensitivity))
+print(paste("Original Model F1 Score:", original_f1))
+
+
+```
+
+Balanced Accuracy is a better assessment of our model in this case, because balanced accuracy takes into account sensitivity and specificity as well which is perfect for imbalanced datasets like ours.
+
+
+
+### Improvements
+We noticed that initially, the tree is too focused on one feature, so we experimented with a few things to increase the model depth, but none of the methods we tried yielded any improvements except for increasing model complexity, with a very slight improvement as can be seen below:
+
+```{r}
+complex_model <- rpart(y_train ~ est_diameter_min + est_diameter_max + relative_velocity + miss_distance + absolute_magnitude,
+               data = as.data.frame(X_train),
+               method = "class",
+               control = rpart.control(cp = 0.001),
+)
+```
+
+Let's also visualize the changes to the tree
+
+```{r}
+rpart.plot(complex_model)
+```
+
+And let's examine the improvement:
+```{r}
+complex_predictions <- predict(complex_model, newdata = as.data.frame(X_test), type = "class")
+
+complex_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = complex_predictions)
+plot_confusion_matrix(complex_confusion_matrix$`Confusion Matrix`[[1]])
+complex_specificity <- complex_confusion_matrix$Specificity
+complex_sensitivity <- complex_confusion_matrix$Sensitivity
+complex_f1 <- complex_confusion_matrix$F1
+```
+
+We see our model here has dropped a little bit of sensitivity in exchange for slightly higher precision, which raises our accuracy and F1 scores.
+
+```{r}
+complex_accuracy <- mean(complex_predictions == y_test)
+print(paste("Complex Model accuracy",complex_accuracy))
+print(paste("Complex Model Balanced accuracy",complex_confusion_matrix$`Balanced Accuracy`))
+
+print(paste("Complex Model Specificity:", complex_specificity))
+print(paste("Complex Model Sensitivity (Recall):", complex_sensitivity))
+print(paste("Complex Model F1 Score:", complex_f1))
+```
+
+## Ensemble Methods on Trees
+
+### Random Forests
+We tried a random forests approach, which is a collection of decision trees. We were able to use the same data from the decision trees, so first we define the model:
+
+```{r}
+
+rf_model <- randomForest(
+  x = X_train,
+  y = y_train,
+  ntree = 500,
+  importance = TRUE,
+  type = "classification"
+)
+
+```
+
+We set the `ntree` variable to the default value which is 500, this hyperparameter refers to the number of trees that will be created inside the forest.
+
+Evaluating the model went as follows:
+```{r}
+rf_predictions <- predict(rf_model, newdata = X_test, type = "class")
+
+rf_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions)
+plot_confusion_matrix(rf_confusion_matrix$`Confusion Matrix`[[1]])
+```
+```{r}
+# Print metrics for the initial Random Forest model
+rf_accuracy <- mean(rf_predictions == y_test)
+rf_balanced_accuracy <- rf_confusion_matrix$`Balanced Accuracy`
+rf_sensitivity <- rf_confusion_matrix$Sensitivity
+rf_specificity <- rf_confusion_matrix$Specificity
+rf_f1 <- rf_confusion_matrix$F1
+
+print(paste("Initial RF Model Accuracy:", rf_accuracy))
+print(paste("Initial RF Model Balanced Accuracy:", rf_balanced_accuracy))
+print(paste("Initial RF Model Sensitivity:", rf_sensitivity))
+print(paste("Initial RF Model Specificity:", rf_specificity))
+print(paste("Initial RF Model F1 Score:", rf_f1))
+```
+
+The model did not perform better than our initial decision tree model, so we try hyperparameter tuning using 5-fold cross validation on the model:
+
+```{r}
+rf_train_control <- trainControl(method = "cv", number = 5)
+rf_hyperparameters <- expand.grid(mtry = c(2, 3, 4), ntree = c(100, 500, 1000, 2000))
+
+rf_model_cv <- randomForest(
+  x = X_train,
+  y = y_train,
+  ntree = 500,
+  importance = TRUE,
+  type = "classification",
+  trControl = train_control,
+  tuneGrid = hyperparameters
+)
+```
+
+Again, the metrics are as follows:
+
+```{r}
+rf_predictions_cv <- predict(rf_model_cv, newdata = X_test, type = "class")
+
+rf_confusion_matrix_cv <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions_cv)
+plot_confusion_matrix(rf_confusion_matrix_cv$`Confusion Matrix`[[1]])
+```
+
+```{r}
+rf_accuracy_cv <- mean(rf_predictions_cv == y_test)
+rf_balanced_accuracy_cv <- rf_confusion_matrix_cv$`Balanced Accuracy`
+rf_sensitivity_cv <- rf_confusion_matrix_cv$Sensitivity
+rf_specificity_cv <- rf_confusion_matrix_cv$Specificity
+rf_f1_cv <- rf_confusion_matrix_cv$F1
+
+print(paste("Cross-Validated RF Model Accuracy:", rf_accuracy_cv))
+print(paste("Cross-Validated RF Model Balanced Accuracy:", rf_balanced_accuracy_cv))
+print(paste("Cross-Validated RF Model Sensitivity:", rf_sensitivity_cv))
+print(paste("Cross-Validated RF Model Specificity:", rf_specificity_cv))
+print(paste("Cross-Validated RF Model F1 Score:", rf_f1_cv))
+```
+
+## Support Vector Machines
+
+### Prepare and split data
+Just splitting the datasetinto training and testing sets with an 80-20 split
+```{r}
+final_dataset$hazardous <- factor(final_dataset$hazardous, levels = c("False", "True"))
+
+# Splitting the dataset
+set.seed(123) # for reproducibility
+splitIndex <- createDataPartition(final_dataset$hazardous, p = .8, list = FALSE)
+train_data <- final_dataset[splitIndex,]
+test_data <- final_dataset[-splitIndex,]
+
+```
+### Fitting the Model
+The SVM model is fitted using different kernels: linear, polynomial, radial, and sigmoid.
+```{r}
+
+# Initialize results dataframe
+results <- data.frame()
+kernels <- c("linear", "polynomial", "radial", "sigmoid")
+roc_data <- data.frame()
+
+# Convert feature names to a formula string
+formula_string <- paste("hazardous ~", paste(feature_names, collapse = " + "))
+
+# Convert the string to a formula
+svm_formula <- as.formula(formula_string)
+
+# Example output of svm_formula will be:
+# hazardous ~ absolute_magnitude + miss_distance + relative_velocity + est_diameter_min
+
+# SVM analysis and ROC data collection
+for (kernel in kernels) {
+  # Train the model with probability estimation using the formula
+  model <- svm(svm_formula, 
+               data = train_data, 
+               type = 'C-classification', 
+               kernel = kernel, 
+               probability = TRUE)
+
+  # Predictions
+  predictions <- predict(model, test_data, probability = TRUE)
+  
+  # Evaluation Metrics
+  cm <- table(test_data$hazardous, predictions)
+  accuracy <- sum(diag(cm)) / sum(cm)
+  precision <- diag(cm) / colSums(cm)
+  recall <- diag(cm) / rowSums(cm)
+  f1_scores <- 2 * (precision * recall) / (precision + recall)
+  f1_score <- mean(f1_scores, na.rm = TRUE)  # Averaging the F1 scores
+  
+  # ROC and AUC
+  probabilities <- attr(predictions, "probabilities")
+  if("True" %in% colnames(probabilities)) {
+    roc_obj <- roc(test_data$hazardous, probabilities[, "True"])
+    auc_value <- auc(roc_obj)
+    
+    # Adding ROC data for plotting
+    roc_data <- rbind(roc_data, data.frame(t = roc_obj$thresholds, 
+                                           tp = roc_obj$sensitivities, 
+                                           fp = 1 - roc_obj$specificities, 
+                                           kernel = kernel))
+  } else {
+    auc_value <- NA
+    print(paste("AUC not computed for kernel:", kernel, "- 'True' class probabilities missing"))
+  }
+  
+  # Collect results
+  results <- rbind(results, data.frame(kernel, accuracy, f1_score, auc_value))
+}
+
+```
+### Model Evaluation
+After training the models, the performance is evaluated using metrics like accuracy, precision, recall, F1 score, and AUC (Area Under the Curve). These metrics provide a comprehensive view of the model's performance. The ROC (Receiver Operating Characteristic) curves for each kernel are plotted to visualize their performance in distinguishing between the classes. Finally, a bar plot compares the performance metrics across different kernels, helping to identify which kernel performs best on this dataset.
+```{r}
+
+# Output the results
+print(results)
+
+# Plot ROC Curves for all kernels in one plot
+ggplot(roc_data, aes(x = fp, y = tp, color = kernel)) + 
+  geom_line() + 
+  theme_minimal() + 
+  labs(title = "Comparison of ROC Curves for Different Kernels", 
+       x = "False Positive Rate", 
+       y = "True Positive Rate")
+
+# Performance Metrics Comparison
+melted_results <- melt(results, id.vars = "kernel")
+ggplot(melted_results, aes(x = kernel, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  theme_minimal() +
+  labs(title = "Comparison of Performance Metrics Across Kernels",
+       x = "Kernel", y = "Value")
+
+```
+SVM Results:
+
+-Radial Kernel: Highest accuracy and AUC, indicating excellent overall performance and ability to distinguish between classes.
+
+-Linear Kernel: Close second in performance, showing good balance and effectiveness.
+Polynomial Kernel: Moderate performance, slightly behind the linear kernel.
+
+-Sigmoid Kernel: Lowest performance, indicating it might not be the best fit for this particular dataset.
+
+## Principal Component Analysis
+
+In our analysis, we have applied PCA to a dataset containing various features associated with celestial objects, namely est_diameter_min, est_diameter_max, relative_velocity, miss_distance, and absolute_magnitude. These features have been standardized before applying PCA to ensure that each feature contributes equally to the analysis.
+### Running PCA
+```{r}
+# Step 2: Select numerical columns
+numerical_data <- data[, c("est_diameter_min", "est_diameter_max", "relative_velocity", "miss_distance", "absolute_magnitude")]
+
+# Step 3: Standardize the data
+standardized_data <- scale(numerical_data)
+
+# Step 4: Apply PCA
+pca_result <- prcomp(standardized_data)
+```
+### Getting Results
+```{r}
+#Step 5: Summary of results
+summary(pca_result)
+```
+The key insights:
+
+-Once we look at the results we can see the first two principal components (PC1 and PC2) capture a significant amount of information (78.80% of the total variance). This suggests that these two components largely summarize the variability in our dataset
+- Based on the cumulative proportion of variance, one can decide how many principal components to retain. For instance, using the first four components (capturing 100% of the variance) would be a comprehensive representation of the data.
+-The negligible variance explained by PC5 suggests that it contributes little to the data structure and can be dropped without much loss of information.
+
+### Running PCA Components on SVM 
+```{r}
+data$hazardous <- factor(data$hazardous, levels = c("False", "True"))
+# Function to perform SVM analysis with specified number of PCA components
+perform_svm_analysis <- function(num_components) {
+  # Extracting the specified number of principal components
+  pca_data <- pca_result$x[, 1:num_components]
+  
+  # Creating a dataframe with PCA components
+  pca_df <- as.data.frame(pca_data)
+  pca_df$hazardous <- data$hazardous
+  
+  # Splitting the dataset with PCA components
+  set.seed(123) # for reproducibility
+  splitIndex <- createDataPartition(pca_df$hazardous, p = .8, list = FALSE)
+  train_data_pca <- pca_df[splitIndex,]
+  test_data_pca <- pca_df[-splitIndex,]
+  
+  # Initialize results dataframe for PCA-based SVM
+  results_pca <- data.frame()
+  kernels <- c("linear", "polynomial", "radial", "sigmoid")
+  
+  # SVM analysis and ROC data collection using PCA components
+  for (kernel in kernels) {
+    # Train the model with probability estimation using PCA components
+    formula <- as.formula(paste("hazardous ~", paste(colnames(pca_data), collapse = " + ")))
+    model_pca <- svm(formula, 
+                     data = train_data_pca, 
+                     type = 'C-classification', 
+                     kernel = kernel, 
+                     probability = TRUE)
+    
+    # Predictions using PCA components
+    predictions_pca <- predict(model_pca, test_data_pca, probability = TRUE)
+    
+    # Evaluation Metrics for PCA-based model
+    cm_pca <- table(test_data_pca$hazardous, predictions_pca)
+    accuracy_pca <- sum(diag(cm_pca)) / sum(cm_pca)
+    precision_pca <- diag(cm_pca) / colSums(cm_pca)
+    recall_pca <- diag(cm_pca) / rowSums(cm_pca)
+    f1_scores_pca <- 2 * (precision_pca * recall_pca) / (precision_pca + recall_pca)
+    f1_score_pca <- mean(f1_scores_pca, na.rm = TRUE)  # Averaging the F1 scores
+    
+    # ROC and AUC for PCA-based model
+    probabilities_pca <- attr(predictions_pca, "probabilities")
+    auc_value_pca <- if("True" %in% colnames(probabilities_pca)) {
+      roc_obj_pca <- roc(test_data_pca$hazardous, probabilities_pca[, "True"])
+      auc(roc_obj_pca)
+    } else {
+      NA
+    }
+    
+    # Collect results for PCA-based model
+    results_pca <- rbind(results_pca, data.frame(kernel, accuracy_pca, f1_score_pca, auc_value_pca, components = num_components))
+  }
+  
+  return(results_pca)
+}
+
+# Perform SVM analysis for 2, 3, and 4 components
+results_2components <- perform_svm_analysis(2)
+results_3components <- perform_svm_analysis(3)
+results_4components <- perform_svm_analysis(4)
+
+# Combine results from different component runs
+all_results <- rbind(results_2components, results_3components, results_4components)
+```
+#### Results
+```{r}
+# Output the combined results
+print(all_results)
+```
+Impact of PCA on Model Performance
+
+-Linear Kernel:
+
+With PCA (4 components), the performance is almost identical to the scenario without PCA. This suggests that PCA, in this case, effectively captures the necessary information in fewer dimensions without losing predictive power.
+
+-Polynomial Kernel:
+
+The performance slightly improves with PCA (4 components) compared to without PCA. This improvement might be due to the reduction of noise or redundant information in the dataset through PCA.
+
+-Radial Kernel:
+
+Interestingly, the radial kernel's performance is slightly better without PCA but is still very close with PCA (3 components). This indicates that PCA does a good job of maintaining the essential features for the radial kernel.
+
+-Sigmoid Kernel:
+
+The performance is generally lower with PCA compared to without PCA, suggesting that PCA might be removing some information that is important for the sigmoid kernel's decision-making
+
+#### Interpretation of SVM with PCA
+The performance of the SVM models using PCA components seems to improve as you increase the number of components. 
+The results with 4 PCA components are particularly interesting because they are derived from the same number of original features but transformed into principal components. The performance is quite comparable to the original SVM model, indicating that PCA is capturing the essential information in the data.
+
+with fewer components (like 2 or 3) leads to some loss in model performance compared to the original feature set or 4 PCA components. This implies that each of the original features contributes valuable information to the model.
+
+#### Decision Tree with PCA
+```{r}
+
+perform_decision_tree_analysis <- function(num_components) {
+  pca_data <- pca_result$x[, 1:num_components]
+  pca_df <- as.data.frame(pca_data)
+  pca_df$hazardous <- factor(data$hazardous, levels = c("False", "True"))
+
+  set.seed(123)
+  splitIndex <- createDataPartition(pca_df$hazardous, p = .8, list = FALSE)
+  train_data_pca <- pca_df[splitIndex,]
+  test_data_pca <- pca_df[-splitIndex,]
+
+  model_pca <- rpart(hazardous ~ .,
+                     data = train_data_pca,
+                     method = "class")
+  
+  predictions_pca <- predict(model_pca, newdata = test_data_pca, type = "class")
+  cm_pca <- table(test_data_pca$hazardous, predictions_pca)
+  # ... [Other evaluation metrics] ...
+  
+  return(list(model = model_pca, cm = cm_pca))
+}
+
+# Run decision tree analysis with different number of PCA components
+dt_results_2components <- perform_decision_tree_analysis(2)
+dt_results_3components <- perform_decision_tree_analysis(3)
+dt_results_4components <- perform_decision_tree_analysis(4)
+
+# Combine results from different component runs
+tree_results <- rbind(dt_results_2components,dt_results_3components, results_4components)
+print(tree_results)
+```
+
+## Clustering
+
+# Hyperparameter Tuning
+
+# Interpreting the Results
