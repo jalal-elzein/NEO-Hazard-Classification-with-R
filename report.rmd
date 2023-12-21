@@ -4,13 +4,17 @@ output:
   html_document: default
   pdf_document: default
 ---
+Student Names: Tamer Kobba 202104873
+Jalal EL Zein 202105966
 
 # Introduction
 In the quest for understanding and safeguarding our planet from potential cosmic threats, the analysis of Near-Earth Objects (NEOs) takes center stage. Leveraging data from NASA's API on NEOs, this report delves into the development of machine learning models aimed at classifying these celestial entities as hazardous or non-hazardous. The urgency of this research lies in the profound implications of a collision with a hazardous NEO, as evidenced by historical cosmic events. By harnessing the power of machine learning, we aspire to enhance our predictive capabilities and contribute to the broader field of planetary defense
 
 # Data Selection
 This data is slightly pre-cleaned and obtained through NASA APIs obtained through the Center for Near Earth Object Studies which is responsible for computing highly accurate orbital data for thousands of asteroids and comets that fly close to our planetary neighborhood. This cleaned version is available on Kaggle under public domain provided by Mr. Sameep Vani, and it was last updated in June 2022.
+
 # Project Setup
+
 ## Load necessary libraries
 ```{r}
 library(dplyr)
@@ -111,58 +115,304 @@ We also see that our data is imbalanced, as we have the non-hazardous class domi
 
 ## Under-sampling
 ```{r}
-# Remove duplicates based on ID
-data_unique <- data %>% distinct(id, .keep_all = TRUE)
+data_unique <- raw_data %>% distinct(id, .keep_all = TRUE)
 
-# Splitting the data into hazardous and non-hazardous datasets
 hazardous_data <- filter(data_unique, hazardous == "True")
 non_hazardous_data <- filter(data_unique, hazardous == "False")
 
-# Calculate the total number of samples needed
-total_samples <- nrow(data_unique)
-
-# Since hazardous data is only 20% of the dataset, we use all of it
 hazardous_samples <- nrow(hazardous_data)
+non_hazardous_samples <- nrow(non_hazardous_data)
 
-# Calculate the number of non-hazardous samples needed to achieve the 55% ratio
-# For this, first calculate the total desired size of the final dataset
-final_dataset_size <- hazardous_samples / 0.5
-non_hazardous_samples <- round(final_dataset_size * 0.5)
+# Calculate the number of non-hazardous samples to be used for balancing
+final_non_hazardous_samples <- min(hazardous_samples, non_hazardous_samples)
 
-# Adjust in case the calculation exceeds the available non-hazardous data
-non_hazardous_samples <- min(non_hazardous_samples, nrow(non_hazardous_data))
-
-# Sample the non-hazardous data
-sampled_non_hazardous <- sample_n(non_hazardous_data, non_hazardous_samples)
-
-# Combine the samples (all hazardous data and sampled non-hazardous data)
+set.seed(123) 
+sampled_non_hazardous <- sample_n(non_hazardous_data, final_non_hazardous_samples)
 final_dataset <- rbind(hazardous_data, sampled_non_hazardous)
 
-# Shuffle the final dataset
 set.seed(123)
 final_dataset <- final_dataset[sample(nrow(final_dataset)),]
 
-# Save the final dataset
 write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)
 
+
 ```
+In this process, we aim to balance our dataset, which contains two classes of data: hazardous and non-hazardous. The goal is to achieve a dataset where these two classes are represented equally. To accomplish this, we first remove any duplicate entries based on the id field (data_unique <- raw_data %>% distinct(id, .keep_all = TRUE)), ensuring each data point is unique. We then divide the data into hazardous (filter(data_unique, hazardous == "True")) and non-hazardous groups (filter(data_unique, hazardous == "False")). We keep all hazardous samples (assuming they are less in number, about 20% of the dataset) and calculate the number of non-hazardous samples needed to achieve a 50-50 distribution. This calculation involves determining the final desired dataset size (hazardous_samples / 0.5) and adjusting the non-hazardous sample count accordingly, ensuring it doesn't exceed the available data. We then sample the non-hazardous data (set.seed(123); sample_n(non_hazardous_data, non_hazardous_samples)) to match this calculated number, combining it with the hazardous data and shuffling to ensure a balanced mix (final_dataset <- rbind(hazardous_data, sampled_non_hazardous); set.seed(123); final_dataset <- final_dataset[sample(nrow(final_dataset)),]). Finally, the balanced dataset is saved (write.csv(final_dataset, "balanced_dataset.csv", row.names = FALSE)), ready for further analysis or model training. This methodology provides a clear and reproducible approach to achieving a balanced dataset.
+
 
 
 # Feature Engineering
 
 ## Excluding Features
 
-
-
 As we saw in our data exploration step, some columns offer uninformative information. These columns are mainly `orbiting_body` and `sentry_object` as they have no variability at all.
 
 Other columns we want to exclude will be the `name` and `id` as they are not even features, rather identifiers for the objects.
 
 
-# Data Preprocessing
 
-## Train / Test Splits
-In the above code, we read in the data and select our indicative features, then separate the features from the target and split between training and testing in an 80/20 ratio.
+# Principal Component Analysis(PCA)
+
+In our analysis, we have applied PCA to a dataset containing various features associated with celestial objects, namely est_diameter_min, est_diameter_max, relative_velocity, miss_distance, and absolute_magnitude. These features have been standardized before applying PCA to ensure that each feature contributes equally to the analysis.
+## Running PCA
+```{r}
+data <- read.csv("balanced_dataset.csv")
+numerical_data <- data[, c("est_diameter_min", "est_diameter_max", "relative_velocity", "miss_distance", "absolute_magnitude")]
+
+standardized_data <- scale(numerical_data)
+
+
+pca_result <- prcomp(standardized_data)
+```
+## Getting Results
+
+```{r}
+#Step 5: Summary of results
+summary(pca_result)
+```
+The key insights:
+
+-Once we look at the results we can see the first two principal components (PC1 and PC2) capture a significant amount of information (78.80% of the total variance). This suggests that these two components largely summarize the variability in our dataset
+- Based on the cumulative proportion of variance, one can decide how many principal components to retain. For instance, using the first four components (capturing 100% of the variance) would be a comprehensive representation of the data.
+-The negligible variance explained by PC5 suggests that it contributes little to the data structure and can be dropped without much loss of information.
+
+
+
+
+# Clustering
+## Clustering Analysis
+
+In this analysis, we explored hierarchical clustering using different linkage methods on a dataset. The goal was to determine an optimal number of clusters for the data.
+
+
+we performed hierarchical clustering using various linkage methods:
+
+- **Complete Linkage:** This method uses the maximum pairwise distance between points in two clusters.
+- **Single Linkage:** It considers the minimum pairwise distance between points in two clusters.
+- **Average Linkage:** This method calculates the average pairwise distance between points in two clusters.
+- **Centroid Linkage:** It uses the distance between the centroids of two clusters.
+- **Median Linkage:** This method considers the median pairwise distance between points in two clusters.
+- **McQuitty Linkage:** It is a modification of the average linkage method.
+- **Ward D Linkage:** This method minimizes the variance of distances within clusters.
+- **Ward D2 Linkage:** It is an alternative to Ward D that uses squared distances.
+
+### Visualizing Dendrograms
+
+Dendrograms for each hierarchical model were visualized, displaying the hierarchical structure of the data and the formation of clusters as the linkage threshold increases
+
+
+### Determining Optimal Number of Clusters
+The Elbow method was used to identify the optimal number of clusters. This method involves plotting the Within-Cluster Sum of Squares (WSS) for different numbers of clusters and selecting the 'elbow' point where the WSS begins to level off.
+
+ 
+```{r}
+# Load necessary libraries
+library(factoextra)
+library(cluster)
+
+# Define the feature names and extract the features
+feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity","est_diameter_max")
+hclust_features <- data[feature_names]
+
+# Scale the features
+# Assuming 'data' is your original dataframe
+
+# Calculate z-scores for each feature
+z_scores <- scale(data[feature_names])
+
+# Define a threshold for outliers (commonly 2.5 or 3)
+threshold <- 2.5
+
+# Identify outliers (any data point with a feature having z-score beyond the threshold)
+outliers <- apply(z_scores, 1, function(x) any(abs(x) > threshold))
+
+# Remove outliers from the data
+data_clean <- data[!outliers, ]
+
+# Proceed with the rest of your existing code, using 'data_clean' instead of 'data'
+hclust_features <- data_clean[feature_names]
+hclust_features_scaled <- scale(hclust_features)
+# ... rest of your clustering code
+
+
+# Perform hierarchical clustering using different linkage methods
+complete_heir_model <- hclust(dist(hclust_features_scaled), method = "complete")
+single_heir_model <- hclust(dist(hclust_features_scaled), method = "single")
+average_heir_model <- hclust(dist(hclust_features_scaled), method = "average")
+centroid_heir_model <- hclust(dist(hclust_features_scaled), method = "centroid")
+median_heir_model <- hclust(dist(hclust_features_scaled), method = "median")
+mcquitty_heir_model <- hclust(dist(hclust_features_scaled), method = "mcquitty")
+ward.D_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D")
+ward.D2_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D2")
+
+# Visualize the dendrograms for each hierarchical model
+plot_list <- list(complete_heir_model, single_heir_model, average_heir_model,
+                  centroid_heir_model, median_heir_model, mcquitty_heir_model,
+                  ward.D_heir_model, ward.D2_heir_model)
+names(plot_list) <- c("Complete", "Single", "Average", "Centroid", "Median", "McQuitty", "Ward D", "Ward D2")
+
+# Adjust global plot margins
+par(mar = c(3, 3, 2, 1))
+
+# Plot Dendrograms
+for (i in 1:length(plot_list)) {
+  plot(plot_list[[i]], main = paste(names(plot_list)[i], "Linkage"),
+       xlab = "", sub = "", cex = .9)
+}
+
+# Function to calculate WSS
+calculate_wss <- function(hclust_model, data, max_clusters = 10) {
+  sapply(2:max_clusters, function(k){
+    clustering <- cutree(hclust_model, k)
+    sum(sapply(1:k, function(cluster){
+      cluster_points <- data[clustering == cluster, ]
+      sum(dist(cluster_points)^2)
+    }))
+  })
+}
+
+max_clusters <- 10
+
+# Filter plot_list to include Complete, McQuitty, Ward D, Ward D2, and Average models
+selected_models <- c("Complete", "McQuitty", "Ward D", "Ward D2", "Average")
+selected_plot_list <- plot_list[selected_models]
+names(selected_plot_list) <- selected_models
+
+# Apply the WSS calculation function to each of the selected hierarchical models
+selected_wss_values <- lapply(selected_plot_list, calculate_wss, data = hclust_features_scaled, max_clusters = max_clusters)
+
+# Plot the Elbow Curve for the selected models
+par(mfrow = c(3, 2)) # Adjust layout for 5 plots
+for (i in 1:length(selected_wss_values)) {
+  plot(2:max_clusters, selected_wss_values[[i]], type = "b", pch = 19, xlab = "Number of clusters K",
+       ylab = "Total within-cluster sum of squares", main = names(selected_wss_values)[i])
+}
+
+
+```
+The complete,mcquitty, Ward D,ward D2 and average tended to yielded more evenly sized clusters whereas the others lead to more extended and unevenly sized clusters. 
+
+The Elbow method suggested that three clusters (K=3) might be optimal, indicating a good balance between within-cluster variance and simplicity 
+
+
+### Cutting Dendrograms at Specific Heights
+To further explore this, we cut the dendrograms at specific heights to examine the clusters formed
+
+PCA was employed for dimensionality reduction, and scatter plots were created to visualize the clusters from different linkage methods. These plots helped in understanding the distribution and separation of clusters.
+
+
+```{r}
+# Cutting the dendrograms at specified heights
+clusters_wardD2 <- cutree(ward.D2_heir_model, h = 59)
+clusters_wardD <- cutree(ward.D_heir_model, h = 900)
+clusters_complete <- cutree(complete_heir_model, h = 7)
+clusters_mcquitty <- cutree(mcquitty_heir_model, h = 3.5)
+clusters_average <- cutree(average_heir_model, h = 2.85)
+
+# Cluster plots using factoextra
+# Example: Using PCA for dimensionality reduction
+pca_result <- prcomp(hclust_features_scaled)
+pca_data <- as.data.frame(pca_result$x)
+
+# Add cluster assignments to the PCA data
+pca_data$cluster_wardD2 <- as.factor(clusters_wardD2)
+pca_data$cluster_wardD <- as.factor(clusters_wardD)
+pca_data$cluster_complete <- as.factor(clusters_complete)
+pca_data$cluster_mcquitty <- as.factor(clusters_mcquitty)
+pca_data$cluster_average <- as.factor(clusters_average)
+
+
+# Scatter plot for Ward D2 clusters
+plot(pca_data$PC1, pca_data$PC2, col=pca_data$cluster_mcquitty, pch=19, xlab="PC1", ylab="PC2", main="Scatter Plot with mcquitty Clusters")
+legend("topright", legend=levels(pca_data$cluster_mcquitty), col=1:length(levels(pca_data$cluster_wardD2)), pch=19)
+
+
+# Scatter plot for Ward D2 clusters
+plot(pca_data$PC1, pca_data$PC2, col=pca_data$cluster_wardD2, pch=19, xlab="PC1", ylab="PC2", main="Scatter Plot with Ward D2 Clusters")
+legend("topright", legend=levels(pca_data$cluster_wardD2), col=1:length(levels(pca_data$cluster_wardD2)), pch=19)
+
+
+# Scatter plot for Ward D2 clusters
+plot(pca_data$PC1, pca_data$PC2, col=pca_data$cluster_wardD, pch=19, xlab="PC1", ylab="PC2", main="Scatter Plot with Ward D Clusters")
+legend("topright", legend=levels(pca_data$cluster_wardD), col=1:length(levels(pca_data$cluster_wardD2)), pch=19)
+
+
+# Scatter plot for Ward D2 clusters
+plot(pca_data$PC1, pca_data$PC2, col=pca_data$cluster_complete, pch=19, xlab="PC1", ylab="PC2", main="Scatter Plot with complete Clusters")
+legend("topright", legend=levels(pca_data$cluster_complete), col=1:length(levels(pca_data$cluster_wardD2)), pch=19)
+
+plot(pca_data$PC1, pca_data$PC2, col=pca_data$cluster_average, pch=19, xlab="PC1", ylab="PC2", main="Scatter Plot with average Clusters")
+legend("topright", legend=levels(pca_data$cluster_average), col=1:length(levels(pca_data$cluster_wardD2)), pch=19)
+
+
+
+
+```
+
+
+## K-means Clustering
+
+In this analysis, we applied K-means clustering to the dataset after preprocessing and dimensionality reduction using PCA (Principal Component Analysis). The choice of the number of clusters (K) was informed by the results of the hierarchical clustering analysis, where we identified an optimal K=3.
+
+### Dimensionality Reduction with PCA
+
+We performed PCA on the scaled features to reduce dimensionality and obtain the first four principal components (PC1, PC2, PC3, and PC4). These principal components capture the most significant variability in the data.
+
+### K-means Clustering
+
+Using the PCA-transformed data, we applied K-means clustering with K=3 clusters. The choice of K=3 was based on the results of the hierarchical clustering analysis, where we observed that three clusters were suitable for this dataset.
+
+We used a random seed for reproducibility and applied the K-means algorithm with 20 different starting configurations (nstart=20) to mitigate the risk of converging to local minima.
+
+### Visualizing K-means Clusters
+
+To visualize the clusters in a 3D space, we created a 3D scatter plot using the first three principal components (PC1, PC2, and PC3) as axes. Each point in the plot represents an observation, color-coded by its assigned cluster. This plot allows us to see how the data points are grouped into three clusters.
+
+Additionally, we created a 2D scatter plot using the first two principal components (PC1 and PC2) to provide a clearer view of the clusters in two-dimensional space. The points are colored by their cluster assignments, and this plot helps visualize the separation of data points along the first two principal components.
+
+
+
+```{r}
+numerical_data <- data[, c("est_diameter_max", "relative_velocity", "miss_distance", "absolute_magnitude")]
+
+kmeans_features_scaled <- scale(numerical_data)
+
+pca_result <- prcomp(kmeans_features_scaled)
+pca_data <- pca_result$x[, 1:4]
+
+set.seed(123)  # For reproducibility
+kmeans_pca <- kmeans(pca_data, 3, nstart = 20)
+pca_data <- as.data.frame(pca_data)
+pca_data$cluster <- kmeans_pca$cluster
+
+scatterplot3d(pca_data[,1], pca_data[,2], pca_data[,3], 
+              color = pca_data$cluster, pch = 19,
+              xlab = "PC1", ylab = "PC2", zlab = "PC3", 
+              main = "K-means Clusters on PCA in 3D")
+
+# Extract the first two principal components
+
+pca_data_2d <- pca_data[, 1:4]
+pca_data_2d$cluster <- as.factor(pca_data$cluster)
+
+# Create a 2D scatter plot
+ggplot(pca_data_2d, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point() +
+  labs(title = "K-means Clusters on First Two PCA Components", 
+       x = "Principal Component 1", 
+       y = "Principal Component 2", 
+       color = "Cluster") +
+  theme_minimal()
+
+
+
+
+
+```
+### Findings
+
+When comparing the results of k-means clustering and hierarchical clustering using the Ward D linkage method, it's clear that the Ward D linkage method is preferable in this particular use case. the choice of Ward D linkage method in hierarchical clustering as the best approach in this scenario is based on its ability to closely mirror the results of k-means clustering
+
 
 # Model Development
 
@@ -170,9 +420,6 @@ In the above code, we read in the data and select our indicative features, then 
 The first of a few models we will be trying is Decision Trees.
 
 ```{r}
-
-
-data <- read.csv("balanced_dataset.csv")
 feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
 features <- data[feature_names]
 target <- factor(data$hazardous)
@@ -222,7 +469,7 @@ print(paste("Original Model F1 Score:", original_f1))
 
 
 ```
-The model demonstrated a high sensitivity rate of 97.9%, signifying its adeptness in accurately identifying hazardous objects. This attribute is particularly vital in the context of planetary defense, where the primary objective is to minimize the risk of overlooking potentially dangerous NEOs.
+The model demonstrated a high sensitivity rate of 99.07%, signifying its adeptness in accurately identifying hazardous objects. This attribute is particularly vital in the context of planetary defense, where the primary objective is to minimize the risk of overlooking potentially dangerous NEOs.
 
 In essence, the decision tree model exhibits a pronounced capability in identifying hazardous objects, with a preferential error mode towards overestimation of risk. While the model demonstrates slightly lower specificity and precision, its exceptional sensitivity is of paramount importance in the realm of planetary defense against NEOs. This model orientation towards safety underscores its utility in applications where the cost of missing a hazardous object far outweighs the inconvenience of false alarms..
 
@@ -252,7 +499,7 @@ And let's examine the improvement:
 complex_predictions <- predict(complex_model, newdata = as.data.frame(X_test), type = "class")
 
 complex_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = complex_predictions)
-plot_confusion_matrix(complex_confusion_matrix$`Confusion Matrix`[[1]])
+suppressWarnings({plot_confusion_matrix(complex_confusion_matrix$`Confusion Matrix`[[1]])})
 complex_specificity <- complex_confusion_matrix$Specificity
 complex_sensitivity <- complex_confusion_matrix$Sensitivity
 complex_f1 <- complex_confusion_matrix$F1
@@ -292,7 +539,7 @@ Evaluating the model went as follows:
 rf_predictions <- predict(rf_model, newdata = X_test, type = "class")
 
 rf_confusion_matrix <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions)
-plot_confusion_matrix(rf_confusion_matrix$`Confusion Matrix`[[1]])
+suppressWarnings({(rf_confusion_matrix$`Confusion Matrix`[[1]])})
 ```
 ```{r}
 # Print metrics for the initial Random Forest model
@@ -333,7 +580,7 @@ Again, the metrics are as follows:
 rf_predictions_cv <- predict(rf_model_cv, newdata = X_test, type = "class")
 
 rf_confusion_matrix_cv <- cvms::confusion_matrix(targets = y_test, predictions = rf_predictions_cv)
-plot_confusion_matrix(rf_confusion_matrix_cv$`Confusion Matrix`[[1]])
+suppressWarnings({(rf_confusion_matrix_cv$`Confusion Matrix`[[1]])})
 ```
 
 ```{r}
@@ -350,6 +597,50 @@ print(paste("Cross-Validated RF Model Specificity:", rf_specificity_cv))
 print(paste("Cross-Validated RF Model F1 Score:", rf_f1_cv))
 ```
 Still even after performing 5-fold cross validation the improvement was very minimal
+
+#### Decision Tree with PCA
+We test the simple decision tree on a different number of components and getting the results
+
+```{r}
+set.seed(123)
+# Function to perform Decision Tree analysis with PCA components and plot the tree
+perform_decision_tree_analysis <- function(num_components) {
+  pca_data <- pca_result$x[, 1:num_components]
+  pca_df <- as.data.frame(pca_data)
+  pca_df$hazardous <- data$hazardous
+  
+  splitIndex <- createDataPartition(pca_df$hazardous, p = 0.8, list = FALSE)
+  train_data_pca <- pca_df[splitIndex,]
+  test_data_pca <- pca_df[-splitIndex,]
+  
+  formula <- as.formula(paste("hazardous ~", paste(colnames(pca_data), collapse = " + ")))
+  model_pca <- rpart(formula, data = train_data_pca, method = "class")
+  
+  # Plotting the decision tree
+  plot_title <- paste("Decision Tree with", num_components, "PCA Components")
+  rpart.plot(model_pca, main = plot_title)
+  
+  predictions_pca <- predict(model_pca, newdata = test_data_pca, type = "class")
+  cm_pca <- table(test_data_pca$hazardous, predictions_pca)
+  
+  return(data.frame(components = num_components,
+                    accuracy = mean(predictions_pca == test_data_pca$hazardous), 
+                    balanced_accuracy = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$`Balanced Accuracy`, 
+                    sensitivity = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$Sensitivity, 
+                    specificity = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$Specificity, 
+                    F1 = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$F1))
+}
+
+# Perform and plot Decision Tree analysis for different PCA components
+all_dt_results <- do.call("rbind", lapply(2:4, perform_decision_tree_analysis))
+
+# Output the combined results
+print(all_dt_results)
+
+```
+When using PCA, there's a noticeable drop in accuracy and sensitivity compared to the original model without PCA. This could be due to the loss of some information during the dimensionality reduction process. PCA simplifies the data by focusing on components that explain the most variance, which might sometimes exclude subtler but still important information captured by the original features.
+
+
 
 ## Support Vector Machines
 
@@ -439,7 +730,8 @@ ggplot(roc_data, aes(x = fp, y = tp, color = kernel)) +
        y = "True Positive Rate")
 
 # Performance Metrics Comparison
-melted_results <- melt(results, id.vars = "kernel")
+melted_results <- suppressWarnings(melt(results, id.vars = "kernel"))
+
 ggplot(melted_results, aes(x = kernel, y = value, fill = variable)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   theme_minimal() +
@@ -456,31 +748,6 @@ SVM Results:
 -Polynomial Kernel: Moderate performance, slightly behind the radial kernel.
 
 -Sigmoid Kernel: Lowest performance, indicating it might not be the best fit for this particular dataset.
-
-## Principal Component Analysis
-
-In our analysis, we have applied PCA to a dataset containing various features associated with celestial objects, namely est_diameter_min, est_diameter_max, relative_velocity, miss_distance, and absolute_magnitude. These features have been standardized before applying PCA to ensure that each feature contributes equally to the analysis.
-### Running PCA
-```{r}
-
-numerical_data <- data[, c("est_diameter_min", "est_diameter_max", "relative_velocity", "miss_distance", "absolute_magnitude")]
-
-standardized_data <- scale(numerical_data)
-
-
-pca_result <- prcomp(standardized_data)
-```
-### Getting Results
-
-```{r}
-#Step 5: Summary of results
-summary(pca_result)
-```
-The key insights:
-
--Once we look at the results we can see the first two principal components (PC1 and PC2) capture a significant amount of information (78.80% of the total variance). This suggests that these two components largely summarize the variability in our dataset
-- Based on the cumulative proportion of variance, one can decide how many principal components to retain. For instance, using the first four components (capturing 100% of the variance) would be a comprehensive representation of the data.
--The negligible variance explained by PC5 suggests that it contributes little to the data structure and can be dropped without much loss of information.
 
 ### Running PCA Components on SVM 
 ```{r}
@@ -549,12 +816,12 @@ results_4components <- perform_svm_analysis(4)
 # Combine results from different component runs
 all_results <- rbind(results_2components, results_3components, results_4components)
 ```
-#### Results
+#### Impact of PCA on Model Performance
 ```{r}
 # Output the combined results
 print(all_results)
 ```
-Impact of PCA on Model Performance
+
 
 -Linear Kernel:
 
@@ -578,236 +845,35 @@ The results with 4 PCA components are particularly interesting because they are 
 
 with fewer components (like 2 or 3) leads to some loss in model performance compared to the original feature set or 4 PCA components. This implies that each of the original features contributes valuable information to the model.
 
-#### Decision Tree with PCA
-We test the simple decision tree on a different number of components and getting the results
 
-```{r}
-set.seed(123)
-# Function to perform Decision Tree analysis with PCA components and plot the tree
-perform_decision_tree_analysis <- function(num_components) {
-  pca_data <- pca_result$x[, 1:num_components]
-  pca_df <- as.data.frame(pca_data)
-  pca_df$hazardous <- data$hazardous
-  
-  splitIndex <- createDataPartition(pca_df$hazardous, p = 0.8, list = FALSE)
-  train_data_pca <- pca_df[splitIndex,]
-  test_data_pca <- pca_df[-splitIndex,]
-  
-  formula <- as.formula(paste("hazardous ~", paste(colnames(pca_data), collapse = " + ")))
-  model_pca <- rpart(formula, data = train_data_pca, method = "class")
-  
-  # Plotting the decision tree
-  plot_title <- paste("Decision Tree with", num_components, "PCA Components")
-  rpart.plot(model_pca, main = plot_title)
-  
-  predictions_pca <- predict(model_pca, newdata = test_data_pca, type = "class")
-  cm_pca <- table(test_data_pca$hazardous, predictions_pca)
-  
-  return(data.frame(components = num_components,
-                    accuracy = mean(predictions_pca == test_data_pca$hazardous), 
-                    balanced_accuracy = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$`Balanced Accuracy`, 
-                    sensitivity = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$Sensitivity, 
-                    specificity = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$Specificity, 
-                    F1 = cvms::confusion_matrix(targets = test_data_pca$hazardous, predictions = predictions_pca)$F1))
-}
+# Conclusion
 
-# Perform and plot Decision Tree analysis for different PCA components
-all_dt_results <- do.call("rbind", lapply(2:4, perform_decision_tree_analysis))
+## Key Findings
 
-# Output the combined results
-print(all_dt_results)
+This study, focusing on the classification of Near-Earth Objects (NEOs) as hazardous or non-hazardous using machine learning techniques, has yielded several significant insights:
 
-```
-When using PCA, there's a noticeable drop in accuracy and sensitivity compared to the original model without PCA. This could be due to the loss of some information during the dimensionality reduction process. PCA simplifies the data by focusing on components that explain the most variance, which might sometimes exclude subtler but still important information captured by the original features.
+1. **Data Handling and Balance**: The dataset, sourced from NASA's API and pre-cleaned by Mr. Sameep Vani, was effectively balanced using under-sampling techniques. This step was crucial to ensure fair representation of both classes in the predictive models.
 
+2. **Feature Analysis and Engineering**: The exclusion of non-variability features such as `orbiting_body` and `sentry_object`, and identifiers like `name` and `id`, refined the dataset for more effective modeling.
 
-## Clustering
-## Clustering Analysis
+3. **Dimensionality Reduction with PCA**: PCA was applied to reduce the dataset to its most significant components. This step helped in simplifying the models without substantial loss of information.
 
-In this analysis, we explored hierarchical clustering using different linkage methods on a dataset. The goal was to determine an optimal number of clusters for the data.
+4. **Hierarchical Clustering Insights**: Different linkage methods in hierarchical clustering provided an understanding of data structure, with Ward D linkage method showing a strong alignment with k-means clustering results, indicating its effectiveness in capturing the data's underlying structure.
 
-### Data Preprocessing
+5. **K-means Clustering**: The k-means clustering, guided by insights from hierarchical clustering, effectively segregated the data into distinct clusters, providing a clear division of NEOs into hazardous and non-hazardous categories.
 
-We began by reading the dataset and extracting relevant features, which include "absolute_magnitude," "miss_distance," "relative_velocity," "est_diameter_min," and "est_diameter_max." These features were scaled to ensure consistent ranges of values for clustering.
+6. **Model Development and Comparison**:
+   - The **Decision Tree** model showed high sensitivity, crucial for detecting hazardous NEOs. However, it initially focused heavily on a single feature, leading to experiments with increased model complexity.
+   - **Random Forests** and hyperparameter tuning offered minimal improvements over the decision tree model.
+   - **Support Vector Machines (SVM)** with different kernels were evaluated, with the radial kernel showing the highest accuracy and AUC. The application of PCA components in SVM indicated an interesting balance between dimensionality reduction and model performance.
 
-### Hierarchical Clustering
+7. **Performance Evaluation**:
+    In terms of sensitivity (true positive rate), the decision tree model was particularly notable, emphasizing its potential in planetary defense scenarios where missing a hazardous NEO is more critical than false alarms.
 
-we performed hierarchical clustering using various linkage methods:
 
-- **Complete Linkage:** This method uses the maximum pairwise distance between points in two clusters.
-- **Single Linkage:** It considers the minimum pairwise distance between points in two clusters.
-- **Average Linkage:** This method calculates the average pairwise distance between points in two clusters.
-- **Centroid Linkage:** It uses the distance between the centroids of two clusters.
-- **Median Linkage:** This method considers the median pairwise distance between points in two clusters.
-- **McQuitty Linkage:** It is a modification of the average linkage method.
-- **Ward D Linkage:** This method minimizes the variance of distances within clusters.
-- **Ward D2 Linkage:** It is an alternative to Ward D that uses squared distances.
+8. **PCA's Role in Model Performance**: The application of PCA in different models showed varying impacts. While some models maintained performance with reduced components, others saw a drop, highlighting the trade-off between dimensionality reduction and information retention.
 
-### Visualizing Dendrograms
+## Overall Implications
 
-We visualized the resulting dendrograms for each hierarchical model. The dendrograms display the hierarchical structure of the data, showing how clusters are formed as the linkage threshold increases. To help identify a suitable number of clusters, we added a red horizontal line at a height of 3 in each dendrogram.
+In conclusion, this research contributes valuable insights into the classification of NEOs, offering a robust framework for further exploration and development in the realm of planetary defense. The methodologies and findings can be leveraged to enhance predictive capabilities, ultimately aiding in safeguarding our planet from potential cosmic threats.
 
-
-
-We used the Elbow method to determine the optimal number of clusters. The Elbow method involves calculating the Within-Cluster Sum of Squares (WSS) for different numbers of clusters (K) and selecting the point at which the WSS starts to level off. This point is often referred to as the "elbow," indicating a good balance between cluster quality and simplicity.
-
-
-### Hierarchical 
-```{r}
-library(factoextra)
-library(cluster)
-
-# Read the dataset
-data <- read.csv("balanced_dataset.csv")
-
-# Define the feature names and extract the features
-feature_names <- c("absolute_magnitude", "miss_distance", "relative_velocity", "est_diameter_min", "est_diameter_max")
-hclust_features <- data[feature_names]
-
-# Scale the features
-hclust_features_scaled <- scale(hclust_features)
-
-# Perform hierarchical clustering using different linkage methods
-complete_heir_model <- hclust(dist(hclust_features_scaled), method = "complete")
-single_heir_model <- hclust(dist(hclust_features_scaled), method = "single")
-average_heir_model <- hclust(dist(hclust_features_scaled), method = "average")
-centroid_heir_model <- hclust(dist(hclust_features_scaled), method = "centroid")
-median_heir_model <- hclust(dist(hclust_features_scaled), method = "median")
-mcquitty_heir_model <- hclust(dist(hclust_features_scaled), method = "mcquitty")
-ward.D_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D")
-ward.D2_heir_model <- hclust(dist(hclust_features_scaled), method = "ward.D2")
-
-# Visualize the dendrograms for each hierarchical model
-plot_list <- list(complete_heir_model, single_heir_model, average_heir_model,
-                  centroid_heir_model, median_heir_model, mcquitty_heir_model,
-                  ward.D_heir_model, ward.D2_heir_model)
-names(plot_list) <- c("Complete", "Single", "Average", "Centroid", "Median", "McQuitty", "Ward D", "Ward D2")
-
-# Adjust global plot margins
-par(mar = c(3, 3, 2, 1))
-
-# Plot Dendrograms (In Batches or Save to Files)
-for (i in 1:length(plot_list)) {
-  # Uncomment the next line to save each plot as a file
-  # png(filename = paste("Dendrogram_", names(plot_list)[i], ".png"), width = 800, height = 600)
-  
-  plot(plot_list[[i]], main = paste(names(plot_list)[i], "Linkage"),
-       xlab = "", sub = "", cex = .9)
-  
-  # Uncomment the next line to save each plot as a file
-  # dev.off()
-}
-
-# Function to calculate WSS
-calculate_wss <- function(hclust_model, data, max_clusters = 10) {
-  sapply(2:max_clusters, function(k){
-    clustering <- cutree(hclust_model, k)
-    sum(sapply(1:k, function(cluster){
-      cluster_points <- data[clustering == cluster, ]
-      sum(dist(cluster_points)^2)
-    }))
-  })
-}
-
-# Define the maximum number of clusters to consider
-max_clusters <- 10
-
-# Apply the function to each hierarchical model and store the results
-wss_values <- lapply(plot_list, calculate_wss, data = hclust_features_scaled, max_clusters = max_clusters)
-
-# Plot the Elbow Curve for each model (Adjust the Layout)
-par(mfrow = c(4, 2))
-for (i in 1:length(wss_values)) {
-  plot(2:max_clusters, wss_values[[i]], type = "b", pch = 19, xlab = "Number of clusters K",
-       ylab = "Total within-cluster sum of squares", main = names(wss_values)[i])
-}
-
-
-```
-After applying the Elbow method to all hierarchical models, we found that the elbow point consistently occurred at K=3. This suggests that the data is best represented by three clusters, where the within-cluster variance is relatively low compared to the number of clusters. However, due to the complexity of the dendrogram plots, we did not explicitly cut the dendrogram at a specific threshold to obtain the three clusters.
-
-The choice of not cutting the dendrogram was made because the dendrogram figures did not provide a clear threshold for cutting, and it was difficult to determine an appropriate height for creating three distinct clusters.
-
-In conclusion, hierarchical clustering with various linkage methods indicated that three clusters could be an optimal choice for this dataset based on the Elbow method. Further analysis and visualization may be required to precisely identify the clustering structure.
-### K-means
-## K-means Clustering
-
-In this analysis, we applied K-means clustering to the dataset after preprocessing and dimensionality reduction using PCA (Principal Component Analysis). The choice of the number of clusters (K) was informed by the results of the hierarchical clustering analysis, where we identified an optimal K=3.
-
-### Data Preprocessing
-
-We selected a subset of numerical features from the dataset, including "est_diameter_min," "relative_velocity," "miss_distance," and "absolute_magnitude." These features were scaled to ensure consistent ranges of values.
-
-### Dimensionality Reduction with PCA
-
-We performed PCA on the scaled features to reduce dimensionality and obtain the first four principal components (PC1, PC2, PC3, and PC4). These principal components capture the most significant variability in the data.
-
-### K-means Clustering
-
-Using the PCA-transformed data, we applied K-means clustering with K=3 clusters. The choice of K=3 was based on the results of the hierarchical clustering analysis, where we observed that three clusters were suitable for this dataset.
-
-We used a random seed for reproducibility and applied the K-means algorithm with 20 different starting configurations (nstart=20) to mitigate the risk of converging to local minima.
-
-### Visualizing K-means Clusters
-
-To visualize the clusters in a 3D space, we created a 3D scatter plot using the first three principal components (PC1, PC2, and PC3) as axes. Each point in the plot represents an observation, color-coded by its assigned cluster. This plot allows us to see how the data points are grouped into three clusters.
-
-Additionally, we created a 2D scatter plot using the first two principal components (PC1 and PC2) to provide a clearer view of the clusters in two-dimensional space. The points are colored by their cluster assignments, and this plot helps visualize the separation of data points along the first two principal components.
-
-
-
-```{r}
-numerical_data <- data[, c("est_diameter_min", "relative_velocity", "miss_distance", "absolute_magnitude")]
-
-kmeans_features_scaled <- scale(numerical_data)
-
-pca_result <- prcomp(kmeans_features_scaled)
-pca_data <- pca_result$x[, 1:4]
-
-set.seed(123)  # For reproducibility
-kmeans_pca <- kmeans(pca_data, 3, nstart = 20)
-pca_data <- as.data.frame(pca_data)
-pca_data$cluster <- kmeans_pca$cluster
-
-scatterplot3d(pca_data[,1], pca_data[,2], pca_data[,3], 
-              color = pca_data$cluster, pch = 19,
-              xlab = "PC1", ylab = "PC2", zlab = "PC3", 
-              main = "K-means Clusters on PCA in 3D")
-
-# Extract the first two principal components
-
-pca_data_2d <- pca_data[, 1:4]
-pca_data_2d$cluster <- as.factor(pca_data$cluster)
-
-# Create a 2D scatter plot
-ggplot(pca_data_2d, aes(x = PC1, y = PC2, color = cluster)) +
-  geom_point() +
-  labs(title = "K-means Clusters on First Two PCA Components", 
-       x = "Principal Component 1", 
-       y = "Principal Component 2", 
-       color = "Cluster") +
-  theme_minimal()
-
-
-
-
-
-```
-
-
-# CONCLUSION
-In the pursuit of understanding and safeguarding our planet from potential cosmic threats, the analysis of Near-Earth Objects (NEOs) has taken center stage. This report has explored the development of machine learning models aimed at classifying these celestial entities as either hazardous or non-hazardous
-
-Several machine learning models were explored, including Decision Trees, Random Forests, Support Vector Machines (SVM), Principal Component Analysis (PCA), and Hierarchical Clustering. Each of these models offers unique insights into the classification of hazardous NEOs.
-
-The Decision Tree model demonstrated high sensitivity, making it adept at accurately identifying hazardous objects. While it exhibited slightly lower specificity and precision, its exceptional sensitivity is of paramount importance in the context of planetary defense, where the primary objective is to minimize the risk of overlooking potentially dangerous NEOs.
-
-Random Forests, on the other hand, did not outperform the Decision Tree model, even after hyperparameter tuning. This suggests that the ensemble approach did not provide significant improvements in this specific context.
-
-Support Vector Machines (SVM) offered varying performance depending on the kernel used. The radial kernel displayed the highest accuracy and AUC, indicating excellent overall performance and the ability to distinguish between classes. The linear kernel closely followed in performance, showcasing a good balance.
-
-Principal Component Analysis (PCA) was applied to reduce dimensionality while preserving information. Results indicated that PCA with four components provided performance comparable to the original model, suggesting that it effectively captures essential information in fewer dimensions.
-
-Hierarchical Clustering was employed to explore the natural grouping of NEOs. The Elbow method was used to determine the optimal number of clusters, revealing insights into the inherent structure of the data.
-
-In conclusion, this study has showcased the application of various machine learning techniques to classify Near-Earth Objects as hazardous or non-hazardous. These models hold promise in enhancing our ability to identify potentially dangerous NEOs, contributing to the vital field of planetary defense. Further research could focus on refining these models, considering additional features, and exploring real-time data sources to bolster our cosmic threat detection capabilities. Ultimately, the continued development of machine learning models for NEO classification is essential in ensuring the safety and security of our planet in the face of cosmic challenges.
